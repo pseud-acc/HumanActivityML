@@ -1,8 +1,8 @@
 # HumanActivityML
 
-PLEASE SEE HERE FOR GPUBS PAGE:
+PLEASE SEE HERE FOR RPUBS PAGE:
 
-https://pseud-acc.github.io/HumanActivityML/
+https://rpubs.com/FNwobu/798876
 
 
 Aim:
