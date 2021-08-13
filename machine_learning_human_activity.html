@@ -175,8 +175,8 @@ pre code {
 <div id="executive-summary" class="section level2">
 <h2><strong>Executive Summary</strong></h2>
 <p>In this study, we investigate accelerometer data collected from 6 participants taking part in an human activity experiment. The aim is to predict which activity a participant is doing based on data from accelerometers attached to their belt, forearm, arm and dumbell. In recent years, the use of activity devices such as Jawbone Up, Nike FuelBand Fitbit has increased along with people’s interest in being able to quantify how much and how well they do particular activities. As such, there is a demand for algorithms that are able to make sense of this ever increasing mass of activity data being collected.</p>
-<p>The data analysed in this project comes from accelerometer data attached to participants asked to perform barbell lifts correctly and incorrectly in 5 different ways. As such, classification models were selected in order to generate predictions of a given participant’s activity. eXtreme Gradient Boost (XGBoost), Random Forest and k-Nearest Neighbours were considered in the analysis. Two datasets were provided - a training set (19,622 observations) and a hold-out set (20 observations) - of which, the training set was further subset (into training, test and validation) in order to build the three classification models. The analysis proceeded as follows; data pre-processing (ensuring consistent data quality between training and hold-out sets, feature selection), model building (hyperparameter tuning for both XGBoost, random forest and k-Nearest Neighbour models), model ensembling (majority vote and stacking) and finally, model evaluation on the validation dataset.</p>
-<p>It was determined that the k-Nearest Neighbour model had the highest estimated accuracy on the validation dataset (possibly due to computational constraints limiting the range of number trees investigated for the XGBoost and Random Forest models). However, a model stack (of all models) was selected as the final model - accuracy at 95% level confidence intervals = (0.983,0.991) - to ensure robustness against noise, outliers, data mislabelling etc.</p>
+<p>The data analysed in this project comes from accelerometer data attached to participants asked to perform barbell lifts correctly and incorrectly in 5 different ways. As such, classification models were selected in order to generate predictions of a given participant’s activity. eXtreme Gradient Boost (XGBoost), Random Forest and k-Nearest Neighbours were considered in the analysis. Two datasets were provided - a training set (19,622 observations) and a hold-out set (20 observations) - of which, the training set was further subset (into training, test and validation) in order to build the three classification models. The analysis proceeded as follows; data pre-processing (ensuring consistent data quality between training and hold-out sets, feature selection), model building (hyperparameter tuning for both XGBoost, random forest and k-Nearest Neighbour models), model ensembling (majority vote and stacking) and model evaluation on the validation dataset. Finally, the out of sample error was computed on the holdout sample.</p>
+<p>It was determined that the k-Nearest Neighbour model had the highest estimated accuracy on the validation dataset (possibly due to computational constraints limiting the range of number trees investigated for the XGBoost and Random Forest models). However, a model stack (of all models) was selected as the final model - accuracy at 95% level confidence intervals = (0.983, 0.991) - to ensure robustness against noise, outliers, data mislabelling etc. In the out of sample error analysis, subject 3 was found to have the highest out of sample error (maximum of 0.18), the remaining samples had an out-of-sample error of 0.02 or below.</p>
 </div>
 <div id="sections" class="section level2">
 <h2><strong>Sections</strong></h2>
@@ -201,6 +201,7 @@ pre code {
 <li>Model Stacking</li>
 </ol></li>
 <li><strong>Model Evaluation</strong></li>
+<li><strong>Out-of-Sample Error</strong></li>
 </ol>
 </div>
 <div id="method" class="section level1">
@@ -220,7 +221,58 @@ pre code {
 <li>“raw_timestamp_part_1”, “raw_timestamp_part_2”, “cvtd_timestamp”: Model predictions should be independent of time</li>
 <li>“new_window”, “num_window” : Unrelated to participant movement</li>
 </ul>
-<p>Additionally, NA values were found in the columns of 100 features in the holdout sample. As such, these features were also removed for the training dataset. This reduced the overall number of predictive features to 52.</p>
+<p>Additionally, NA values were found in the columns of 100 features in the holdout sample. These NAs related to features that were computed as the mean, variance, standard deviation, max, min, amplitude, kurtosis and skewness of other features (and therefore would have been highly correlated):</p>
+<pre><code>##   [1] &quot;kurtosis_roll_belt&quot;       &quot;kurtosis_picth_belt&quot;     
+##   [3] &quot;kurtosis_yaw_belt&quot;        &quot;skewness_roll_belt&quot;      
+##   [5] &quot;skewness_roll_belt.1&quot;     &quot;skewness_yaw_belt&quot;       
+##   [7] &quot;max_roll_belt&quot;            &quot;max_picth_belt&quot;          
+##   [9] &quot;max_yaw_belt&quot;             &quot;min_roll_belt&quot;           
+##  [11] &quot;min_pitch_belt&quot;           &quot;min_yaw_belt&quot;            
+##  [13] &quot;amplitude_roll_belt&quot;      &quot;amplitude_pitch_belt&quot;    
+##  [15] &quot;amplitude_yaw_belt&quot;       &quot;var_total_accel_belt&quot;    
+##  [17] &quot;avg_roll_belt&quot;            &quot;stddev_roll_belt&quot;        
+##  [19] &quot;var_roll_belt&quot;            &quot;avg_pitch_belt&quot;          
+##  [21] &quot;stddev_pitch_belt&quot;        &quot;var_pitch_belt&quot;          
+##  [23] &quot;avg_yaw_belt&quot;             &quot;stddev_yaw_belt&quot;         
+##  [25] &quot;var_yaw_belt&quot;             &quot;var_accel_arm&quot;           
+##  [27] &quot;avg_roll_arm&quot;             &quot;stddev_roll_arm&quot;         
+##  [29] &quot;var_roll_arm&quot;             &quot;avg_pitch_arm&quot;           
+##  [31] &quot;stddev_pitch_arm&quot;         &quot;var_pitch_arm&quot;           
+##  [33] &quot;avg_yaw_arm&quot;              &quot;stddev_yaw_arm&quot;          
+##  [35] &quot;var_yaw_arm&quot;              &quot;kurtosis_roll_arm&quot;       
+##  [37] &quot;kurtosis_picth_arm&quot;       &quot;kurtosis_yaw_arm&quot;        
+##  [39] &quot;skewness_roll_arm&quot;        &quot;skewness_pitch_arm&quot;      
+##  [41] &quot;skewness_yaw_arm&quot;         &quot;max_roll_arm&quot;            
+##  [43] &quot;max_picth_arm&quot;            &quot;max_yaw_arm&quot;             
+##  [45] &quot;min_roll_arm&quot;             &quot;min_pitch_arm&quot;           
+##  [47] &quot;min_yaw_arm&quot;              &quot;amplitude_roll_arm&quot;      
+##  [49] &quot;amplitude_pitch_arm&quot;      &quot;amplitude_yaw_arm&quot;       
+##  [51] &quot;kurtosis_roll_dumbbell&quot;   &quot;kurtosis_picth_dumbbell&quot; 
+##  [53] &quot;kurtosis_yaw_dumbbell&quot;    &quot;skewness_roll_dumbbell&quot;  
+##  [55] &quot;skewness_pitch_dumbbell&quot;  &quot;skewness_yaw_dumbbell&quot;   
+##  [57] &quot;max_roll_dumbbell&quot;        &quot;max_picth_dumbbell&quot;      
+##  [59] &quot;max_yaw_dumbbell&quot;         &quot;min_roll_dumbbell&quot;       
+##  [61] &quot;min_pitch_dumbbell&quot;       &quot;min_yaw_dumbbell&quot;        
+##  [63] &quot;amplitude_roll_dumbbell&quot;  &quot;amplitude_pitch_dumbbell&quot;
+##  [65] &quot;amplitude_yaw_dumbbell&quot;   &quot;var_accel_dumbbell&quot;      
+##  [67] &quot;avg_roll_dumbbell&quot;        &quot;stddev_roll_dumbbell&quot;    
+##  [69] &quot;var_roll_dumbbell&quot;        &quot;avg_pitch_dumbbell&quot;      
+##  [71] &quot;stddev_pitch_dumbbell&quot;    &quot;var_pitch_dumbbell&quot;      
+##  [73] &quot;avg_yaw_dumbbell&quot;         &quot;stddev_yaw_dumbbell&quot;     
+##  [75] &quot;var_yaw_dumbbell&quot;         &quot;kurtosis_roll_forearm&quot;   
+##  [77] &quot;kurtosis_picth_forearm&quot;   &quot;kurtosis_yaw_forearm&quot;    
+##  [79] &quot;skewness_roll_forearm&quot;    &quot;skewness_pitch_forearm&quot;  
+##  [81] &quot;skewness_yaw_forearm&quot;     &quot;max_roll_forearm&quot;        
+##  [83] &quot;max_picth_forearm&quot;        &quot;max_yaw_forearm&quot;         
+##  [85] &quot;min_roll_forearm&quot;         &quot;min_pitch_forearm&quot;       
+##  [87] &quot;min_yaw_forearm&quot;          &quot;amplitude_roll_forearm&quot;  
+##  [89] &quot;amplitude_pitch_forearm&quot;  &quot;amplitude_yaw_forearm&quot;   
+##  [91] &quot;var_accel_forearm&quot;        &quot;avg_roll_forearm&quot;        
+##  [93] &quot;stddev_roll_forearm&quot;      &quot;var_roll_forearm&quot;        
+##  [95] &quot;avg_pitch_forearm&quot;        &quot;stddev_pitch_forearm&quot;    
+##  [97] &quot;var_pitch_forearm&quot;        &quot;avg_yaw_forearm&quot;         
+##  [99] &quot;stddev_yaw_forearm&quot;       &quot;var_yaw_forearm&quot;</code></pre>
+<p>As such, these features were also removed for the training dataset. This reduced the overall number of predictive features to 52.</p>
 </div>
 <div id="traintestvalidation-data-split" class="section level3">
 <h3>Train/Test/Validation Data Split</h3>
@@ -731,6 +783,31 @@ pre code {
 </p>
 </div>
 </div>
+<div id="out-of-sample-error" class="section level2">
+<h2><strong>Out of Sample Error</strong></h2>
+<p>To check the out-of-sample error, predictions of class probabilities were obtained on the holdout sample data. The estimate of the out of sample error is the probabilities for classes not assigned to a given subject (i.e. p &lt; 0.5).</p>
+<pre><code>##       A    B    C    D   E
+## 1  0.00 1.00 0.00 0.00 0.0
+## 2  1.00 0.00 0.00 0.00 0.0
+## 3  0.50 0.14 0.18 0.08 0.1
+## 4  1.00 0.00 0.00 0.00 0.0
+## 5  1.00 0.00 0.00 0.00 0.0
+## 6  0.00 0.00 0.00 0.00 1.0
+## 7  0.02 0.00 0.00 0.98 0.0
+## 8  0.00 1.00 0.00 0.00 0.0
+## 9  1.00 0.00 0.00 0.00 0.0
+## 10 1.00 0.00 0.00 0.00 0.0
+## 11 0.00 1.00 0.00 0.00 0.0
+## 12 0.00 0.00 1.00 0.00 0.0
+## 13 0.00 1.00 0.00 0.00 0.0
+## 14 1.00 0.00 0.00 0.00 0.0
+## 15 0.00 0.00 0.00 0.00 1.0
+## 16 0.00 0.00 0.00 0.00 1.0
+## 17 1.00 0.00 0.00 0.00 0.0
+## 18 0.00 1.00 0.00 0.00 0.0
+## 19 0.00 1.00 0.00 0.00 0.0
+## 20 0.00 1.00 0.00 0.00 0.0</code></pre>
+</div>
 <div id="appendix" class="section level2">
 <h2><strong>Appendix</strong></h2>
 <pre class="r"><code>library(ggplot2);library(dplyr);library(reshape2);library(caret)
@@ -790,6 +867,7 @@ set.seed(123)
 inTest  &lt;- createDataPartition(testing_tmp$classe, p = 0.5, list = FALSE)
 testing &lt;- testing_tmp[inTest,]
 validation  &lt;- testing_tmp[-inTest,]
+vars_to_rmv
 # ---------
 # Distribution checks - slight bias towards &quot;A&quot; class
 # ---------
@@ -1090,7 +1168,25 @@ plot_summary&lt;- ggplot(plot_tbl, aes(x=value, y=Model)) +
         theme_bw() +
         theme(axis.line = element_line(colour = &quot;black&quot;),
               panel.background = element_blank()) 
-print(plot_summary)</code></pre>
+print(plot_summary)
+#apply pca model to holdout data
+holdoutpca &lt;- predict(preproc, holdout[,-53])
+
+#Convert input data into Dmatrices for XGB model
+X_holdout = xgb.DMatrix(as.matrix(holdoutpca))
+
+#generate base learner predictions on the holdout set
+predsh_xgb &lt;- predict(object = mod_xgb, newdata = X_holdout)
+predsh_rf &lt;- predict(object = mod_rf, newdata = holdoutpca)
+predsh_knn &lt;- predict(object = mod_knn, newdata = holdoutpca)
+
+#combine base learner holdout set predictions
+predsh_df &lt;- data.frame(preds_xgb = predsh_xgb, 
+                        preds_rf = predsh_rf, 
+                        preds_knn = predsh_knn)
+
+#Check probabilities
+predict(mod_stack,predsh_df,type=&quot;prob&quot;)</code></pre>
 </div>
 </div>
 

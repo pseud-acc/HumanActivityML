@@ -18,9 +18,9 @@ knitr::opts_chunk$set(echo = FALSE, eval = FALSE)
 
 In this study, we investigate accelerometer data collected from 6 participants taking part in an human activity experiment. The aim is to predict which activity a participant is doing based on data from accelerometers attached to their belt, forearm, arm and dumbell. In recent years, the use of activity devices such as Jawbone Up, Nike FuelBand Fitbit has increased along with people's interest in being able to quantify how much and how well they do particular activities. As such, there is a demand for algorithms that are able to make sense of this ever increasing mass of activity data being collected. 
 
-The data analysed in this project comes from accelerometer data attached to participants asked to perform barbell lifts correctly and incorrectly in 5 different ways. As such, classification models were selected in order to generate predictions of a given participant's activity. eXtreme Gradient Boost (XGBoost), Random Forest and k-Nearest Neighbours were considered in the analysis. Two datasets were provided - a training set (19,622 observations) and a hold-out set (20 observations) - of which, the training set was further subset (into training, test and validation) in order to build the three classification models. The analysis proceeded as follows; data pre-processing (ensuring consistent data quality between training and hold-out sets, feature selection), model building (hyperparameter tuning for both XGBoost, random forest and k-Nearest Neighbour models), model ensembling (majority vote and stacking) and finally, model evaluation on the validation dataset. 
+The data analysed in this project comes from accelerometer data attached to participants asked to perform barbell lifts correctly and incorrectly in 5 different ways. As such, classification models were selected in order to generate predictions of a given participant's activity. eXtreme Gradient Boost (XGBoost), Random Forest and k-Nearest Neighbours were considered in the analysis. Two datasets were provided - a training set (19,622 observations) and a hold-out set (20 observations) - of which, the training set was further subset (into training, test and validation) in order to build the three classification models. The analysis proceeded as follows; data pre-processing (ensuring consistent data quality between training and hold-out sets, feature selection), model building (hyperparameter tuning for both XGBoost, random forest and k-Nearest Neighbour models), model ensembling (majority vote and stacking) and model evaluation on the validation dataset. Finally, the out of sample error was computed on the holdout sample.
 
-It was determined that the k-Nearest Neighbour model had the highest estimated accuracy on the validation dataset (possibly due to computational constraints limiting the range of number trees investigated for the XGBoost and Random Forest models). However, a model stack (of all models) was selected as the final model - accuracy at 95% level confidence intervals = (0.983,0.991) - to ensure robustness against noise, outliers, data mislabelling etc.
+It was determined that the k-Nearest Neighbour model had the highest estimated accuracy on the validation dataset (possibly due to computational constraints limiting the range of number trees investigated for the XGBoost and Random Forest models). However, a model stack (of all models) was selected as the final model - accuracy at 95% level confidence intervals = (0.983, 0.991) - to ensure robustness against noise, outliers, data mislabelling etc. In the out of sample error analysis, subject 3 was found to have the highest out of sample error (maximum of 0.18), the remaining samples had an out-of-sample error of 0.02 or below.
 
 ## **Sections**
 
@@ -38,6 +38,7 @@ It was determined that the k-Nearest Neighbour model had the highest estimated a
     a. Majority Voting
     b. Model Stacking
 4. **Model Evaluation**
+5. **Out-of-Sample Error**
 
 # **Method**
 
@@ -117,7 +118,13 @@ The following features were removed from the dataset:
 * "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp": Model predictions should be independent of time
 * "new_window", "num_window" : Unrelated to participant movement
 
-Additionally, NA values were found in the columns of `r length(vars_to_rmv)` features in the holdout sample. As such, these features were also removed for the training dataset. This reduced the overall number of predictive features to `r dim(training_tmp)[2]-1`.
+Additionally, NA values were found in the columns of `r length(vars_to_rmv)` features in the holdout sample. These NAs related to features that were computed as the mean, variance, standard deviation, max, min, amplitude, kurtosis and skewness of other features (and therefore would have been highly correlated):
+
+```{r removed_features, echo=FALSE, eval = TRUE,cache=TRUE}
+vars_to_rmv
+```
+
+As such, these features were also removed for the training dataset. This reduced the overall number of predictive features to `r dim(training_tmp)[2]-1`.
 
 ### Train/Test/Validation Data Split
 
@@ -607,6 +614,30 @@ plot_summary<- ggplot(plot_tbl, aes(x=value, y=Model)) +
 print(plot_summary)
 ```
 
+## **Out of Sample Error**
+
+To check the out-of-sample error, predictions of class probabilities were obtained on the holdout sample data. The estimate of the out of sample error is the probabilities for classes not assigned to a given subject (i.e. p < 0.5). 
+
+```{r out_of_sample_error, echo=FALSE, eval = TRUE, cache = TRUE}
+#apply pca model to holdout data
+holdoutpca <- predict(preproc, holdout[,-53])
+
+#Convert input data into Dmatrices for XGB model
+X_holdout = xgb.DMatrix(as.matrix(holdoutpca))
+
+#generate base learner predictions on the holdout set
+predsh_xgb <- predict(object = mod_xgb, newdata = X_holdout)
+predsh_rf <- predict(object = mod_rf, newdata = holdoutpca)
+predsh_knn <- predict(object = mod_knn, newdata = holdoutpca)
+
+#combine base learner holdout set predictions
+predsh_df <- data.frame(preds_xgb = predsh_xgb, 
+                        preds_rf = predsh_rf, 
+                        preds_knn = predsh_knn)
+
+#Check probabilities
+predict(mod_stack,predsh_df,type="prob")
+```
 ## **Appendix**
 
 ```{r ref.label=knitr::all_labels(), echo = T, eval = F}

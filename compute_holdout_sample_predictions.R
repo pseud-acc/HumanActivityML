@@ -29,3 +29,26 @@ predsh_stack
 
 #Check probabilities
 predict(mod_stack,predsh_df,type="prob")
+
+#Majority prediction
+Mode <- function(x) {
+        ux <- unique(x)
+        ux[which.max(tabulate(match(x, ux)))]
+}
+# apply majority vote
+predsh_maj_test <- as.factor(apply(predsh_df[,-4],1,Mode))
+# evaluate accuracy on test dataset
+cm_summary <- function(preds,obs,model_name){
+        cm <- as.data.frame(t(as.matrix(confusionMatrix(obs, preds)$overall))) %>% 
+                mutate(Model = model_name) %>% select(Model,Accuracy,AccuracyLower,AccuracyUpper)
+        return(cm)
+}
+cm_maj_test <- cm_summary(preds_maj_test,testing$classe,"Majority Vote")
+
+probs_xgb <- predict(object = mod_xgb, newdata = X_holdout,type="prob")
+probs_rf <- predict(object = mod_rf, newdata = holdoutpca,type="prob")
+probs_knn <- predict(object = mod_knn, newdata = holdoutpca,type="prob")
+
+probs_xgb
+probs_rf
+probs_knn
