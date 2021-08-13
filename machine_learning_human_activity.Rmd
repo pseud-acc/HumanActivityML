@@ -488,7 +488,7 @@ plot_knn<- ggplot(mod_knn$results, aes(x=k, y=Accuracy)) +
 ggarrange(plot_xgb, plot_rf, plot_knn, ncol = 3)
 ```
 
-## Model Ensembling
+## **Model Ensembling**
 
 Model ensembling involves combining the predictions of multiple distinct model in order to obtain a higher accuracy with the aggregated result. In this section, we combine the test set predictions for the XGBoost, Random Forest and K-Nearest Neighbor models to create a model ensemble. In this study we use two methods:
 
@@ -553,7 +553,7 @@ knitr::kable(summary_test %>% mutate(Accuracy = round(Accuracy,3),
                      , caption = "**Table 2**: Summary of Accuracy on different model types - based on test dataset predictions. AccuracyLower/AccuracyUpper refer to the 95% confidence interval of the Accuracy")
 ```
 
-## Model Evaluation
+## **Model Evaluation**
 
 As the model stack was trained on the test data predictions, the actual model accuracy must be computed on the unseen validation data set. Below is a comparison of the accuracy (and uncertainty) across models on the validation dataset:
 ```{r final_accuracy, echo=FALSE}
@@ -605,4 +605,9 @@ plot_summary<- ggplot(plot_tbl, aes(x=value, y=Model)) +
         theme(axis.line = element_line(colour = "black"),
               panel.background = element_blank()) 
 print(plot_summary)
+```
+
+## **Appendix**
+
+```{r ref.label=knitr::all_labels(), echo = T, eval = F}
 ```

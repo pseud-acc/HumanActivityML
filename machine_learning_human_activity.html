@@ -616,7 +616,7 @@ pre code {
 </div>
 </div>
 <div id="model-ensembling" class="section level2">
-<h2>Model Ensembling</h2>
+<h2><strong>Model Ensembling</strong></h2>
 <p>Model ensembling involves combining the predictions of multiple distinct model in order to obtain a higher accuracy with the aggregated result. In this section, we combine the test set predictions for the XGBoost, Random Forest and K-Nearest Neighbor models to create a model ensemble. In this study we use two methods:</p>
 <ol style="list-style-type: lower-alpha">
 <li><strong>Majority Voting</strong></li>
@@ -676,7 +676,7 @@ pre code {
 </table>
 </div>
 <div id="model-evaluation" class="section level2">
-<h2>Model Evaluation</h2>
+<h2><strong>Model Evaluation</strong></h2>
 <p>As the model stack was trained on the test data predictions, the actual model accuracy must be computed on the unseen validation data set. Below is a comparison of the accuracy (and uncertainty) across models on the validation dataset:</p>
 <table>
 <caption><strong>Table 3</strong>: Summary of Accuracy on different model types - based on validation dataset predictions. AccuracyLower/AccuracyUpper refer to the 95% confidence interval of the Accuracy</caption>
@@ -730,6 +730,367 @@ pre code {
 <strong>Figure 3</strong>: Model accuracies based on validation dataset predictions
 </p>
 </div>
+</div>
+<div id="appendix" class="section level2">
+<h2><strong>Appendix</strong></h2>
+<pre class="r"><code>library(ggplot2);library(dplyr);library(reshape2);library(caret)
+library(xgboost);library(ggpubr);library(data.table)
+knitr::opts_chunk$set(echo = FALSE, eval = FALSE)
+#Load data
+load(&quot;model_data/final_model_data.RData&quot;)
+# ---------
+# Load Data - training and hold-out sample
+# ---------
+training_raw &lt;- read.csv(&quot;data/pml-training.csv&quot;)
+#load hold-out sample data
+holdout_raw &lt;- read.csv(&quot;data/pml-testing.csv&quot;)
+# ---------
+# Format conversion - convert classification variable to factor
+# ---------
+training_raw$classe &lt;- as.factor(training_raw$classe)
+
+# ---------
+# Remove irrelevant factors - make independent of participant and time
+# ---------
+# X: row number
+# user_name: Model predictions should be independent of the actual participant
+# raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp: predictions should be independent of time
+# new_window, num_window: not relevant movement of study participant
+facs_to_rmv &lt;- c(&quot;X&quot;,&quot;user_name&quot;,&quot;raw_timestamp_part_1&quot;,&quot;raw_timestamp_part_2&quot;,
+                 &quot;cvtd_timestamp&quot;,&quot;new_window&quot;,&quot;num_window&quot;)
+training_raw2 &lt;- training_raw %&gt;% select(-one_of(facs_to_rmv))
+holdout_raw2 &lt;- holdout_raw %&gt;% select(-one_of(facs_to_rmv))
+
+# ---------
+# Remove variables w/ NAs in holdout dataset
+# ---------
+#extract the variable names from train/holdout datasets
+vars_train &lt;- names(training_raw2)
+vars_holdout &lt;- names(holdout_raw2)
+# reconcile the columns between train and holdout data - 
+# classe in only in train, problem_id only in holdout
+mismatch &lt;- data.frame(in_train_out_holdout = setdiff(vars_train,vars_holdout),
+                       out_train_in_holdout = setdiff(vars_holdout,vars_train))
+#identify variables in holdout dataset w/ NAs
+vars_to_rmv &lt;- vars_holdout[Reduce(rbind, lapply(lapply(holdout_raw2, is.na),any))]
+#subset train/holdout data to non-NA variables
+training_tmp &lt;- training_raw2 %&gt;% select(-one_of(vars_to_rmv))
+holdout &lt;- holdout_raw2 %&gt;% select(-one_of(vars_to_rmv))
+# Training dataset reduced to 53 variables including the classifier (classe)
+dim(training_tmp)
+
+# ---------
+# Subset data in train/test - 70/15/15 split for Train/Test/Validation
+# ---------
+set.seed(123)
+inTrain  &lt;- createDataPartition(training_tmp$classe, p = 0.7, list = FALSE)
+training &lt;- training_tmp[inTrain,]
+testing_tmp  &lt;- training_tmp[-inTrain,]
+set.seed(123)
+inTest  &lt;- createDataPartition(testing_tmp$classe, p = 0.5, list = FALSE)
+testing &lt;- testing_tmp[inTest,]
+validation  &lt;- testing_tmp[-inTest,]
+# ---------
+# Distribution checks - slight bias towards &quot;A&quot; class
+# ---------
+train_classe &lt;- training %&gt;% group_by(classe) %&gt;% 
+        dplyr::summarise(train_n = n()) %&gt;%
+        dplyr::mutate(train_pct = round(100 * train_n / sum(train_n,na.rm=TRUE),1))
+test_classe &lt;- testing %&gt;% group_by(classe) %&gt;% 
+        dplyr::summarise(test_n = n()) %&gt;% 
+        dplyr::mutate(test_pct = round(100 * test_n / sum(test_n,na.rm=TRUE),1)) %&gt;% 
+                select(-classe)
+validation_classe &lt;- validation %&gt;% group_by(classe) %&gt;% 
+        dplyr::summarise(validation_n = n()) %&gt;%
+        dplyr::mutate(validation_pct = round(100 * validation_n / sum(validation_n,na.rm=TRUE),1)) %&gt;% 
+                select(-classe)
+knitr::kable(cbind(train_classe,test_classe,validation_classe), caption = &quot;**Table 1**: Number/Percentage of each class in the training, test and validation datasets&quot;)
+# Skewed towards more of class A in all three datasets - overall proportion of classes
+# consistent across train, test and validation datasets
+# -------------
+# PCA - feature reduction; take principal components that capture 95% of explained variance
+# -------------
+# use prcomp to obtain variances of principal components
+pca_comp &lt;- data.frame(var = (prcomp(training[,-53], center = TRUE, scale = TRUE)$sdev)^2) %&gt;%
+        dplyr::mutate(PC = row_number(),  var_pct = 100 *var/sum(var, na.rm = TRUE),
+               var_pct_cum = cumsum(var_pct))
+
+preproc &lt;- preProcess(training[,-53],thresh = 0.95,method=&quot;pca&quot;)
+preproc
+trainpca &lt;- predict(preproc, training[,-53])
+trainpca$classe &lt;- training$classe
+testpca &lt;- predict(preproc, testing[,-53])
+testpca$classe &lt;- testing$classe
+validationpca &lt;- predict(preproc, validation[,-53])
+validationpca$classe &lt;- validation$classe
+
+#Convert input data into Dmatrices for XGB model
+X_train = xgb.DMatrix(as.matrix(trainpca %&gt;% select(-classe)))
+y_train = trainpca$classe
+X_test = xgb.DMatrix(as.matrix(testpca %&gt;% select(-classe)))
+y_test = testpca$classe
+X_validation = xgb.DMatrix(as.matrix(validationpca %&gt;% select(-classe)))
+y_validation = validationpca$classe
+plot_pca &lt;- ggplot(data = pca_comp) + 
+        geom_bar( aes(x = PC, y = var_pct), stat = &quot;identity&quot;, fill = &quot;red&quot;, alpha = 0.6) +
+        labs(x=&quot;Principal Component&quot;, y = &quot; % of Variance Explained&quot;) +
+        scale_x_continuous(expand = c(0, 0), breaks = c(1,seq(5,50,5)))+ 
+        scale_y_continuous(limits = c(0,17), expand = c(0, 0))  +      
+        geom_vline(xintercept = 25, linetype=&quot;dashed&quot;, color=&quot;blue&quot;) +
+        theme_bw() +
+        theme(axis.line = element_line(colour = &quot;black&quot;),
+              panel.grid.major = element_blank(),
+              panel.grid.minor = element_blank(),
+              panel.background = element_blank())
+plot_pca
+# -------------
+# Set train parameters for caret - cross validation &amp; no. of repeats
+# -------------
+# Repeated cross-fold validation (repeatedcv) on 10 folds (number) and repeated 
+# 3 times (repeats)
+kfolds &lt;- 10; cv_repeats &lt;- 3; nctrl &lt;- kfolds * cv_repeats
+zctrl_95 &lt;- qt(0.975, kfolds * cv_repeats - 1)
+ctrl &lt;- trainControl(method = &quot;repeatedcv&quot;, number = kfolds, repeats = cv_repeats, 
+                     allowParallel = TRUE,verboseIter = FALSE, 
+                     savePredictions = TRUE, classProbs = TRUE,
+                     returnData = FALSE)
+# set out tuning hyperparameter grid
+xgb_hypergrid &lt;- expand.grid(nrounds = c(50,100,175,250),
+                             max_depth = c(5,8,12),
+                             eta = 0.1,
+                             gamma = 0,
+                             colsample_bytree = c(0.5,0.75,1),
+                             subsample = 1,
+                             min_child_weight = 0)
+
+# train model
+set.seed(1235)
+start_time &lt;- Sys.time()
+mod_xgb &lt;- train(
+        X_train, y_train,
+        trControl = ctrl,
+        tuneGrid = xgb_hypergrid,
+        method = &quot;xgbTree&quot;
+)
+end_time &lt;- Sys.time()
+end_time - start_time
+mod_xgb
+
+#predict using processed test data
+preds_xgb &lt;- predict(object = mod_xgb, newdata = X_test)
+
+#evaluate predictions using confusion matrix
+cm_xgb = confusionMatrix(testing$classe, preds_xgb)
+df_tmp &lt;- as.data.frame(mod_xgb$finalModel$params) %&gt;% select(-objective, -validate_parameters)
+xgb_final_params &lt;- as.data.frame(t(as.matrix(df_tmp))) %&gt;% rename(value = V1)
+knitr::kable(xgb_final_params, caption = &quot;Hyperparameters for final XGBoost Model&quot;)
+knitr::kable(as.data.frame(cm_xgb$byClass) %&gt;% select(Sensitivity,
+                        Specificity, Precision, `Balanced Accuracy`) %&gt;%
+                     mutate(Sensitivity = round(Sensitivity,3),
+                            Specificity = round(Specificity,3),
+                            Precision = round(Precision,3),
+                            `Balanced Accuracy` = round(`Balanced Accuracy`,3)))
+# set out tuning hyperparameter grid - mtry (no. of sampled vars)
+rf_hypergrid &lt;- expand.grid(mtry=c(2,ceiling(sqrt(ncol(trainpca))),10,20,ncol(trainpca)));
+
+# set range of ntrees
+ntree_list &lt;- c(10,20,50,100,200,250)
+# Set-up for retaining each ntree model results
+modellist &lt;- list()
+modeltraintime &lt;- list()
+col_names &lt;- c(&quot;mtry&quot;,&quot;ntree&quot;,&quot;Accuracy&quot;,&quot;AccuracySD&quot;)
+results_rf_df &lt;- data.frame(matrix(nrow = 0, ncol = length(col_names)))
+colnames(results_df) &lt;- col_names
+results_rf_df
+
+start_time &lt;- Sys.time()
+for (ntree in ntree_list){
+        set.seed(123)
+        message(&quot;Random Forest, ntree = &quot;, ntree)
+        start_time1 &lt;- Sys.time()
+        fit &lt;- train(Species ~.,
+                     data = trainpca,
+                     method = &quot;rf&quot;,
+                     tuneGrid = rf_hypergrid,
+                     trControl = ctrl,
+                     ntree = ntree)
+        end_time1 &lt;- Sys.time()
+        key &lt;- toString(ntree)
+        modellist[[key]] &lt;- fit
+        modeltraintime[[key]] &lt;- end_time1 - start_time1
+        results_rf_df &lt;- rbind(results_rf_df,
+                            data.frame(mtry = fit$results$mtry,
+                                       ntree = rep(ntree,nrow(rf_hypergrid)),
+                                       Accuracy = fit$results$Accuracy,
+                                       AccuracySD = fit$results$AccuracySD))
+        print(results_rf_df)
+}
+end_time &lt;- Sys.time()
+end_time - start_time
+
+# Select optimal model parameters from list
+rf_opt_hp &lt;- results_df %&gt;% filter(Accuracy == max(Accuracy)) %&gt;% filter(ntree == min(ntree))
+rf_opt_hp
+
+# Extract optimal model from list
+mod_rf &lt;- modellist[[as.character(rf_opt_hp$ntree)]]
+mod_rf
+
+#predict using processed test data
+preds_rf &lt;- predict(object = mod_rf, newdata = testpca)
+
+#evaluate predictions using confusion matrix
+cm_rf = confusionMatrix(testing$classe, preds_rf)
+df_tmp &lt;- data.frame(mtry = rf_opt_hp$mtry, ntree = rf_opt_hp$ntree)
+rf_final_params &lt;- as.data.frame(t(as.matrix(df_tmp))) %&gt;% rename(value = V1)
+knitr::kable(rf_final_params, caption = &quot;Hyperparameters for final Random Forest Model&quot;)
+knitr::kable(as.data.frame(cm_rf$byClass) %&gt;% select(Sensitivity,
+                        Specificity, Precision, `Balanced Accuracy`)%&gt;%
+                     mutate(Sensitivity = round(Sensitivity,3),
+                            Specificity = round(Specificity,3),
+                            Precision = round(Precision,3),
+                            `Balanced Accuracy` = round(`Balanced Accuracy`,3)))
+#hyperparameter grid - number of nearest neighbours to consider
+knn_hypergrid &lt;- expand.grid(k = c(1,2,3,5,8,10,15,25,40));
+# train model
+set.seed(1235)
+start_time &lt;- Sys.time()
+mod_knn &lt;- train(classe ~ ., 
+                 data = trainpca, 
+                 method = &quot;knn&quot;,
+                 trControl = ctrl,
+                 tuneGrid = knn_hypergrid
+)#
+mod_knn
+end_time &lt;- Sys.time()
+end_time - start_time
+
+#predict using processed test data
+preds_knn &lt;- predict(object = mod_knn, newdata = testpca)
+
+#evaluate predictions using confusion matrix
+cm_knn = confusionMatrix(testing$classe, preds_knn)
+df_tmp &lt;- data.frame(k = mod_knn$bestTune$k)
+knn_final_params &lt;- as.data.frame(t(as.matrix(df_tmp))) %&gt;% rename(value = V1)
+knitr::kable(knn_final_params, caption = &quot;Hyperparameters for final k-Nearest Neighbours Model&quot;)
+knitr::kable(as.data.frame(cm_knn$byClass) %&gt;% select(Sensitivity,
+                        Specificity, Precision, `Balanced Accuracy`)%&gt;%
+                     mutate(Sensitivity = round(Sensitivity,3),
+                            Specificity = round(Specificity,3),
+                            Precision = round(Precision,3),
+                            `Balanced Accuracy` = round(`Balanced Accuracy`,3)))
+
+#XGB uncertainty
+results_xgb_df &lt;- mod_xgb$results;
+results_xgb_df$max_depth&lt;- as.factor(results_xgb_df$max_depth)
+results_xgb_df$colsample_bytree &lt;-as.factor(results_xgb_df$colsample_bytree)
+plot_xgb&lt;- ggplot(results_xgb_df, aes(x=nrounds, y=Accuracy, group = max_depth, color=max_depth)) + 
+        geom_errorbar(aes(ymin=Accuracy-zctrl_95*AccuracySD/sqrt(nctrl), 
+                          ymax=Accuracy+zctrl_95*AccuracySD/sqrt(nctrl)), width=3) +
+        geom_line() +
+        geom_point()        +
+        facet_grid(rows = vars(colsample_bytree), labeller = label_both, 
+                   scales = &quot;free&quot;, space = &quot;free&quot;)  +      
+        theme_bw() +
+        theme(axis.line = element_line(colour = &quot;black&quot;),
+              panel.background = element_blank())
+#random forest uncertainty
+results_rf_df$ntree &lt;- as.factor(results_rf_df$ntree)
+results_rf_df$mtry &lt;- as.factor(results_rf_df$mtry)
+plot_rf&lt;- ggplot(results_rf_df, aes(x=ntree, y=Accuracy, group = mtry, color=mtry)) + 
+        geom_errorbar(aes(ymin=Accuracy-zctrl_95*AccuracySD/sqrt(nctrl), 
+                          ymax=Accuracy+zctrl_95*AccuracySD/sqrt(nctrl)), width=0.1) +
+        geom_line() +
+        geom_point()  +      
+        theme_bw() +
+        theme(axis.line = element_line(colour = &quot;black&quot;),
+              panel.background = element_blank())
+#knn uncertainty
+plot_knn&lt;- ggplot(mod_knn$results, aes(x=k, y=Accuracy)) + 
+        geom_errorbar(aes(ymin=Accuracy-zctrl_95*AccuracySD/sqrt(nctrl), 
+                          ymax=Accuracy+zctrl_95*AccuracySD/sqrt(nctrl)), width=0.1) +
+        geom_line() +
+        geom_point()  +      
+        theme_bw() +
+        theme(axis.line = element_line(colour = &quot;black&quot;),
+              panel.background = element_blank())
+# Plot uncertainty for all models
+ggarrange(plot_xgb, plot_rf, plot_knn, ncol = 3)
+#combine test data predictions from base learners
+preds_df &lt;- data.frame(preds_xgb, preds_rf, preds_knn, classe = testing$classe)
+#mode function
+Mode &lt;- function(x) {
+        ux &lt;- unique(x)
+        ux[which.max(tabulate(match(x, ux)))]
+}
+# apply majority vote
+preds_maj_test &lt;- as.factor(apply(preds_df[,-4],1,Mode))
+# evaluate accuracy on test dataset
+cm_summary &lt;- function(preds,obs,model_name){
+        cm &lt;- as.data.frame(t(as.matrix(confusionMatrix(obs, preds)$overall))) %&gt;% 
+                mutate(Model = model_name) %&gt;% select(Model,Accuracy,AccuracyLower,AccuracyUpper)
+        return(cm)
+}
+cm_maj_test &lt;- cm_summary(preds_maj_test,testing$classe,&quot;Majority Vote&quot;)
+#train ensemble model (of base learner predictions) using random forest
+mod_stack &lt;- train(classe ~.,
+             data = preds_df,
+             method = &quot;rf&quot;,
+             tuneLength = 5,
+             trControl = ctrl,
+             ntree = 50)
+mod_stack
+#evaluate model stack accuracy - 95% Confidence Intervals - assumed student-t distribution
+accuracy_mod_stack &lt;- mod_stack$results %&gt;% filter(Accuracy == (max(Accuracy))) %&gt;%
+        mutate(AccuracyLower = Accuracy - zctrl_95*AccuracySD/sqrt(nctrl),
+               AccuracyUpper = Accuracy + zctrl_95*AccuracySD/sqrt(nctrl)) %&gt;% 
+        mutate(Model = &quot;Model Stack&quot;) %&gt;% select(Model,Accuracy,AccuracyLower,AccuracyUpper)
+# Base learner accuracy
+cm_xgb_test &lt;- cm_summary(preds_xgb,testing$classe,&quot;XGBoost&quot;)
+cm_rf_test &lt;- cm_summary(preds_rf,testing$classe,&quot;Random Forest&quot;)
+cm_knn_test &lt;- cm_summary(preds_knn,testing$classe,&quot;k-NN&quot;)
+#model accuracy summary
+summary_test &lt;- rbind(cm_xgb_test,cm_rf_test,cm_knn_test,cm_maj_test,accuracy_mod_stack)
+knitr::kable(summary_test %&gt;% mutate(Accuracy = round(Accuracy,3), 
+                                     AccuracyLower = round(AccuracyLower,3),
+                                     AccuracyUpper = round(AccuracyUpper,3))
+                     , caption = &quot;**Table 2**: Summary of Accuracy on different model types - based on test dataset predictions. AccuracyLower/AccuracyUpper refer to the 95% confidence interval of the Accuracy&quot;)
+#generate base learner predictions on the validation set
+predsv_xgb &lt;- predict(object = mod_xgb, newdata = X_validation)
+predsv_rf &lt;- predict(object = mod_rf, newdata = validationpca)
+predsv_knn &lt;- predict(object = mod_knn, newdata = validationpca)
+#combine base learner validation set predictions
+predsv_df &lt;- data.frame(preds_xgb = predsv_xgb, 
+                        preds_rf = predsv_rf, 
+                        preds_knn = predsv_knn, 
+                        classe = validation$classe)
+#majority vote predictions
+predsv_maj &lt;- as.factor(apply(predsv_df[,-4],1,Mode))
+#Feed ensemble learner with base learner predictions
+predsv_stack &lt;- predict(mod_stack,predsv_df)
+#Evaluate accuracy on all models
+cm_xgb_final &lt;- cm_summary(predsv_xgb,validation$classe,&quot;XGBoost&quot;)
+cm_rf_final &lt;- cm_summary(predsv_rf,validation$classe,&quot;Random Forest&quot;)
+cm_knn_final &lt;- cm_summary(predsv_knn,validation$classe,&quot;k-NN&quot;)
+cm_maj_final &lt;- cm_summary(predsv_maj,validation$classe,&quot;Majority Vote&quot;)
+cm_stack_final &lt;- cm_summary(predsv_stack,validation$classe,&quot;Model Stack&quot;)
+summary_final &lt;- rbind(cm_xgb_final,cm_rf_final,cm_knn_final,cm_maj_final,cm_stack_final)
+knitr::kable(summary_final %&gt;% mutate(Accuracy = round(Accuracy,3), 
+                                     AccuracyLower = round(AccuracyLower,3),
+                                     AccuracyUpper = round(AccuracyUpper,3)), caption = &quot;**Table 3**: Summary of Accuracy on different model types - based on validation dataset predictions. AccuracyLower/AccuracyUpper refer to the 95% confidence interval of the Accuracy&quot;)
+#Plot accuracy
+label &lt;- c(&quot;Estimated Accuracy&quot;, &quot;Lower Bound (95% CI)&quot; , 
+           &quot;Upper Bound (95% CI)&quot;)
+plot_tbl &lt;- reshape2::melt(summary_final,&quot;Model&quot;)
+plot_summary&lt;- ggplot(plot_tbl, aes(x=value, y=Model)) + 
+        geom_path(aes(x=value, y=Model)) +
+        geom_point(aes(x=value, y=Model, group = variable, color=variable), size=4) +
+        scale_colour_discrete(name = &quot;Accuracy Type&quot;, labels = label)  +      
+        labs(x = &quot;Accuracy&quot;, y = &quot;Model Type&quot;) +
+        theme_bw() +
+        theme(axis.line = element_line(colour = &quot;black&quot;),
+              panel.background = element_blank()) 
+print(plot_summary)</code></pre>
 </div>
 </div>
 
