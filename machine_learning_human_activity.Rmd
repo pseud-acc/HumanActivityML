@@ -121,7 +121,13 @@ The following features were removed from the dataset:
 Additionally, NA values were found in the columns of `r length(vars_to_rmv)` features in the holdout sample. These NAs related to features that were computed as the mean, variance, standard deviation, max, min, amplitude, kurtosis and skewness of other features (and therefore would have been highly correlated):
 
 ```{r removed_features, echo=FALSE, eval = TRUE,cache=TRUE}
-vars_to_rmv
+vars_to_rmv2 <- vars_holdout[grep(c("^avg|^var|^kurtosis|^max|^min|^amplitude|^skewness|^stddev"),
+                                  vars_holdout)]
+
+message("Mismatch between NA columns and summary features")
+setdiff(vars_to_rmv,vars_to_rmv2)
+message("NA columns and summary feature intersection")
+intersect(vars_to_rmv,vars_to_rmv)
 ```
 
 As such, these features were also removed for the training dataset. This reduced the overall number of predictive features to `r dim(training_tmp)[2]-1`.

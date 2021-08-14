@@ -222,6 +222,9 @@ pre code {
 <li>“new_window”, “num_window” : Unrelated to participant movement</li>
 </ul>
 <p>Additionally, NA values were found in the columns of 100 features in the holdout sample. These NAs related to features that were computed as the mean, variance, standard deviation, max, min, amplitude, kurtosis and skewness of other features (and therefore would have been highly correlated):</p>
+<pre><code>## Mismatch between NA columns and summary features</code></pre>
+<pre><code>## character(0)</code></pre>
+<pre><code>## NA columns and summary feature intersection</code></pre>
 <pre><code>##   [1] &quot;kurtosis_roll_belt&quot;       &quot;kurtosis_picth_belt&quot;     
 ##   [3] &quot;kurtosis_yaw_belt&quot;        &quot;skewness_roll_belt&quot;      
 ##   [5] &quot;skewness_roll_belt.1&quot;     &quot;skewness_yaw_belt&quot;       
@@ -867,7 +870,13 @@ set.seed(123)
 inTest  &lt;- createDataPartition(testing_tmp$classe, p = 0.5, list = FALSE)
 testing &lt;- testing_tmp[inTest,]
 validation  &lt;- testing_tmp[-inTest,]
-vars_to_rmv
+vars_to_rmv2 &lt;- vars_holdout[grep(c(&quot;^avg|^var|^kurtosis|^max|^min|^amplitude|^skewness|^stddev&quot;),
+                                  vars_holdout)]
+
+message(&quot;Mismatch between NA columns and summary features&quot;)
+setdiff(vars_to_rmv,vars_to_rmv2)
+message(&quot;NA columns and summary feature intersection&quot;)
+intersect(vars_to_rmv,vars_to_rmv)
 # ---------
 # Distribution checks - slight bias towards &quot;A&quot; class
 # ---------
